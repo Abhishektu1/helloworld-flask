@@ -1,42 +1,53 @@
 pipeline {
     agent any
+
     environment {
-        DOCKER_HUB_REPO = 'Abhishektu1/myflaskapp'  // Replace with your Docker Hub username/repo
+        DOCKER_HUB_CREDENTIALS = 'docker-hub-credentials'
+        DOCKER_IMAGE = 'abhishektu/flask-app'
     }
+
     stages {
-        stage('Build Docker Image') {
+        stage('Checkout Code') {
             steps {
-                sh 'docker build -t ${DOCKER_HUB_REPO}:${BUILD_NUMBER} .'
+                git branch: 'main', url: 'https://github.com/Abhishektu1/old.git'
             }
         }
-        stage('Push to Docker Hub') {
+
+        stage('Build Docker Image') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
-                    sh 'docker push ${DOCKER_HUB_REPO}:${BUILD_NUMBER}'
+                script {
+                    dockerImage = docker.build("${DOCKER_IMAGE}:latest")
                 }
             }
         }
-        stage('Deploy to EC2') {
+
+        stage('Login to Docker Hub') {
             steps {
-                sshPublisher(
-                    publishers: [
-                        sshPublisherDesc(
-                            configName: 'my-ec2-instance',
-                            transfers: [
-                                sshTransfer(
-                                    execCommand: """
-                                        docker pull ${DOCKER_HUB_REPO}:${BUILD_NUMBER}
-                                        docker stop myflaskapp || true
-                                        docker rm myflaskapp || true
-                                        docker run -d --name myflaskapp -p 5000:5000 ${DOCKER_HUB_REPO}:${BUILD_NUMBER}
-                                    """
-                                )
-                            ]
-                        )
-                    ]
-                )
+                withCredentials([usernamePassword(credentialsId: "${DOCKER_HUB_CREDENTIALS}", usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
+                    sh "echo $PASSWORD | docker login -u $USERNAME --password-stdin"
+                }
             }
+        }
+
+        stage('Push Image to Docker Hub') {
+            steps {
+                script {
+                    dockerImage.push("latest")
+                }
+            }
+        }
+
+        stage('Cleanup') {
+            steps {
+                sh 'docker logout'
+                sh "docker rmi ${DOCKER_IMAGE}:latest || true"
+            }
+        }
+    }
+
+    post {
+        failure {
+            echo 'Pipeline failed!'
         }
     }
 }
