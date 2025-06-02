@@ -25,4 +25,15 @@ jobs:
           context: .
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/hello-flask:latest
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            docker pull ${{ secrets.DOCKER_USERNAME }}/hello-flask:latest
+            docker stop hello-flask || true
+            docker rm hello-flask || true
+            docker run -d --name hello-flask -p 80:5000 ${{ secrets.DOCKER_USERNAME }}/hello-flask:latest   
 
